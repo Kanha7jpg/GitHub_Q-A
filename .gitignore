@@ -4,3 +4,8 @@ __pycache__/
 venv/
 .env
 data/
+logs/
+outputs/
+.cache/
+tools/llama.cpp/
+.vscode/

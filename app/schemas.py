@@ -21,3 +21,17 @@ class HealthResponse(BaseModel):
     model_loaded: bool
     ingestion_completed: bool
     error: str | None = None
+
+
+class ChunkPreview(BaseModel):
+    chunk_id: str
+    source: str
+    text: str
+
+
+class ChunksResponse(BaseModel):
+    total: int
+    offset: int
+    limit: int
+    source: str | None = None
+    chunks: list[ChunkPreview]
