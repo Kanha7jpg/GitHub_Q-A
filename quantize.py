@@ -18,6 +18,7 @@ import os
 import shutil
 import subprocess
 import sys
+import argparse
 from pathlib import Path
 
 # ── Configuration ────────────────────────────────────────────────────────────
@@ -27,14 +28,14 @@ ENV_PATH = PROJECT_ROOT / ".env"
 DEFAULT_SLM_MODEL_NAME = "microsoft/Phi-3.5-mini-instruct"
 DEFAULT_HF_CACHE_ROOT = Path.home() / ".cache" / "huggingface" / "hub"
 
-# Output directory for the final GGUF (inside your project)
-OUTPUT_DIR = PROJECT_ROOT / "data" / "models"
+# Output directory for the final GGUF (inside your project by default)
+DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "models"
 
 # Final quantized model filename
-QUANTIZED_NAME = "phi-3.5-q4_k_m.gguf"
+DEFAULT_QUANTIZED_NAME = "phi-3.5-q4_k_m.gguf"
 
 # Intermediate full-precision GGUF (deleted after quantization)
-FULL_GGUF_NAME = "phi-3.5-f16.gguf"
+DEFAULT_FULL_GGUF_NAME = "phi-3.5-f16.gguf"
 
 # llama.cpp will be cloned here (inside the project, gitignored)
 LLAMA_CPP_DIR = PROJECT_ROOT / "tools" / "llama.cpp"
@@ -167,9 +168,51 @@ def upsert_env_value(path: Path, key: str, value: str) -> None:
 
     path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
 
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Quantize local Phi-3.5-mini-instruct snapshot to GGUF Q4_K_M"
+    )
+    parser.add_argument(
+        "--output-dir",
+        default=str(DEFAULT_OUTPUT_DIR),
+        help="Output directory for GGUF files (absolute or project-relative path).",
+    )
+    parser.add_argument(
+        "--quantized-name",
+        default=DEFAULT_QUANTIZED_NAME,
+        help="Final quantized GGUF filename.",
+    )
+    parser.add_argument(
+        "--full-name",
+        default=DEFAULT_FULL_GGUF_NAME,
+        help="Intermediate F16 GGUF filename.",
+    )
+    parser.add_argument(
+        "--backend",
+        choices=["auto", "llama_cpp", "transformers"],
+        default="auto",
+        help="Value to write into SLM_BACKEND when updating .env.",
+    )
+    parser.add_argument(
+        "--skip-env-update",
+        action="store_true",
+        help="Do not update GGUF_MODEL_PATH/SLM_BACKEND in .env.",
+    )
+    return parser.parse_args()
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main() -> None:
+    args = parse_args()
+
+    output_dir = Path(args.output_dir).expanduser()
+    if not output_dir.is_absolute():
+        output_dir = (PROJECT_ROOT / output_dir).resolve()
+
+    quantized_name = args.quantized_name
+    full_gguf_name = args.full_name
+
     print("=" * 60)
     print("  Phi-3.5-mini-instruct  →  GGUF Q4_K_M quantizer")
     print("=" * 60)
@@ -189,16 +232,21 @@ def main() -> None:
 
     print(f"\n✓ Using HF snapshot:\n  {hf_snapshot}")
     print(f"\n✓ Snapshot found  ({len(safetensors)} safetensors file(s))")
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    output_dir.mkdir(parents=True, exist_ok=True)
 
-    full_gguf_path = OUTPUT_DIR / FULL_GGUF_NAME
-    quantized_path = OUTPUT_DIR / QUANTIZED_NAME
+    full_gguf_path = output_dir / full_gguf_name
+    quantized_path = output_dir / quantized_name
 
     # ── Skip if already quantized ─────────────────────────────────────────────
     if quantized_path.exists() and is_valid_gguf(quantized_path):
         size_gb = quantized_path.stat().st_size / 1e9
         print(f"\n✓ Quantized model already exists ({size_gb:.1f} GB):")
         print(f"  {quantized_path.resolve()}")
+        if not args.skip_env_update:
+            upsert_env_value(ENV_PATH, "GGUF_MODEL_PATH", str(quantized_path.resolve()))
+            upsert_env_value(ENV_PATH, "SLM_BACKEND", args.backend)
+            print(f"\n  Updated .env: GGUF_MODEL_PATH={quantized_path.resolve()}")
+            print(f"  Updated .env: SLM_BACKEND={args.backend}")
         print("\n  Nothing to do. See instructions at the bottom.")
         print_next_steps(quantized_path)
         return
@@ -312,12 +360,17 @@ def main() -> None:
     # ── Done ──────────────────────────────────────────────────────────────────
     if quantized_path.exists() and is_valid_gguf(quantized_path):
         final_size = quantized_path.stat().st_size / 1e9
-        upsert_env_value(ENV_PATH, "GGUF_MODEL_PATH", str(quantized_path.resolve()))
-        upsert_env_value(ENV_PATH, "SLM_BACKEND", "auto")
+        if not args.skip_env_update:
+            upsert_env_value(ENV_PATH, "GGUF_MODEL_PATH", str(quantized_path.resolve()))
+            upsert_env_value(ENV_PATH, "SLM_BACKEND", args.backend)
         print(f"\n{'=' * 60}")
         print(f"  ✓ Quantization complete!  ({final_size:.1f} GB)")
         print(f"{'=' * 60}")
-        print(f"  Updated .env: GGUF_MODEL_PATH={quantized_path.resolve()}")
+        if not args.skip_env_update:
+            print(f"  Updated .env: GGUF_MODEL_PATH={quantized_path.resolve()}")
+            print(f"  Updated .env: SLM_BACKEND={args.backend}")
+        else:
+            print("  Skipped .env update (--skip-env-update)")
         print_next_steps(quantized_path)
     else:
         print("\n✗ Quantized file not found or invalid.")

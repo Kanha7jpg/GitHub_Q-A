@@ -13,6 +13,7 @@ from fastapi.concurrency import run_in_threadpool
 
 from app.config import Settings, get_settings
 from app.ingestion import ChunkRecord, RepositoryIngestor
+from app.model_bootstrap import ensure_quantized_model
 from app.rag import (
     ChromaVectorStore,
     EmbeddingService,
@@ -123,6 +124,7 @@ def startup_event() -> None:
     try:
         init_started = perf_counter()
         configure_hf_environment(settings)
+        ensure_quantized_model(settings, log_process_event)
         ingestor = RepositoryIngestor(settings)
         embedder = EmbeddingService(settings.embedding_model_name)
         vector_store = ChromaVectorStore(settings)
