@@ -14,6 +14,19 @@ spec:
       labels:
         {{- include "rag-api.selectorLabels" . | nindent 8 }}
     spec:
+      {{- if .Values.modelInit.enabled }}
+      initContainers:
+        - name: prepare-quantized-model
+          image: "{{ .Values.quantizerImage.repository }}:{{ .Values.quantizerImage.tag }}"
+          imagePullPolicy: {{ .Values.quantizerImage.pullPolicy }}
+          command:
+            {{- toYaml .Values.modelInit.command | nindent 12 }}
+          args:
+            {{- toYaml .Values.modelInit.args | nindent 12 }}
+          volumeMounts:
+            - name: model-data
+              mountPath: {{ .Values.modelPersistence.mountPath }}
+      {{- end }}
       containers:
         - name: rag-api
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
@@ -80,10 +93,28 @@ spec:
           volumeMounts:
             - name: chroma-data
               mountPath: {{ .Values.persistence.mountPath }}
+            {{- if .Values.modelPersistence.enabled }}
+            - name: model-data
+              mountPath: {{ .Values.modelPersistence.mountPath }}
+            {{- end }}
+          {{- else if .Values.modelPersistence.enabled }}
+          volumeMounts:
+            - name: model-data
+              mountPath: {{ .Values.modelPersistence.mountPath }}
           {{- end }}
       {{- if .Values.persistence.enabled }}
       volumes:
         - name: chroma-data
           persistentVolumeClaim:
             claimName: {{ default (printf "%s-chroma" (include "rag-api.fullname" .)) .Values.persistence.existingClaim }}
+        {{- if .Values.modelPersistence.enabled }}
+        - name: model-data
+          persistentVolumeClaim:
+            claimName: {{ default (printf "%s-models" (include "rag-api.fullname" .)) .Values.modelPersistence.existingClaim }}
+        {{- end }}
+      {{- else if .Values.modelPersistence.enabled }}
+      volumes:
+        - name: model-data
+          persistentVolumeClaim:
+            claimName: {{ default (printf "%s-models" (include "rag-api.fullname" .)) .Values.modelPersistence.existingClaim }}
       {{- end }}

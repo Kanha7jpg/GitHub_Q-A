@@ -15,3 +15,21 @@ spec:
   storageClassName: {{ .Values.persistence.storageClassName }}
   {{- end }}
 {{- end }}
+{{- if and .Values.modelPersistence.enabled (not .Values.modelPersistence.existingClaim) }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "rag-api.fullname" . }}-models
+  labels:
+    {{- include "rag-api.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    {{- toYaml .Values.modelPersistence.accessModes | nindent 4 }}
+  resources:
+    requests:
+      storage: {{ .Values.modelPersistence.size }}
+  {{- if .Values.modelPersistence.storageClassName }}
+  storageClassName: {{ .Values.modelPersistence.storageClassName }}
+  {{- end }}
+{{- end }}

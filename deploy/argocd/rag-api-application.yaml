@@ -12,9 +12,17 @@ spec:
     helm:
       values: |
         image:
-          repository: registry.gitlab.com/Kanha7jpg/GitHub_Q-A
+          repository: registry.gitlab.com/Kanha7jpg/GitHub_Q-A/runtime
+          tag: main-latest
+        quantizerImage:
+          repository: registry.gitlab.com/Kanha7jpg/GitHub_Q-A/quantizer
           tag: main-latest
         persistence:
+          enabled: true
+          size: 20Gi
+        modelInit:
+          enabled: true
+        modelPersistence:
           enabled: true
           size: 20Gi
         resources:

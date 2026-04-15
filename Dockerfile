@@ -59,3 +59,6 @@ ENV SLM_MODEL_NAME=microsoft/Phi-3.5-mini-instruct \
     GGUF_MODEL_PATH=/opt/models/phi3_quantized/phi-3.5-q4_k_m-local.gguf \
     LLAMA_N_CTX=2048
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+
+FROM runtime-base AS runtime
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

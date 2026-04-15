@@ -1,8 +1,13 @@
 replicaCount: 1
 
 image:
-  repository: ghcr.io/kanha7jpg/github-q-a
-  tag: runtime
+  repository: ghcr.io/kanha7jpg/github-q-a/runtime
+  tag: latest
+  pullPolicy: IfNotPresent
+
+quantizerImage:
+  repository: ghcr.io/kanha7jpg/github-q-a/quantizer
+  tag: latest
   pullPolicy: IfNotPresent
 
 service:
@@ -18,7 +23,7 @@ env:
   SLM_MODEL_NAME: microsoft/Phi-3.5-mini-instruct
   SLM_LOCAL_FILES_ONLY: "true"
   SLM_BACKEND: llama_cpp
-  GGUF_MODEL_PATH: /opt/models/phi3_quantized/phi-3.5-q4_k_m-local.gguf
+  GGUF_MODEL_PATH: /models/phi3_quantized/phi-3.5-q4_k_m-local.gguf
   LLAMA_N_CTX: "2048"
   LLAMA_N_THREADS: "8"
 
@@ -38,6 +43,25 @@ persistence:
     - ReadWriteOnce
   size: 20Gi
   mountPath: /app/data/chroma
+
+modelInit:
+  enabled: true
+  command:
+    - sh
+    - -lc
+  args:
+    - >-
+      python -c "from huggingface_hub import snapshot_download; snapshot_download(repo_id='microsoft/Phi-3.5-mini-instruct')";
+      python quantize.py --output-dir /models/phi3_quantized --quantized-name phi-3.5-q4_k_m-local.gguf --full-name phi-3.5-f16-init.gguf --backend llama_cpp --skip-env-update
+
+modelPersistence:
+  enabled: true
+  existingClaim: ""
+  storageClassName: ""
+  accessModes:
+    - ReadWriteOnce
+  size: 20Gi
+  mountPath: /models
 
 probes:
   liveness:
