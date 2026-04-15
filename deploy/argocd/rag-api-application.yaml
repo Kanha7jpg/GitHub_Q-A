@@ -1,0 +1,56 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: rag-api
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://gitlab.com/<group>/<project>.git
+    targetRevision: main
+    path: deploy/helm/rag-api
+    helm:
+      values: |
+        image:
+          repository: registry.gitlab.com/<group>/<project>/runtime
+          tag: main-latest
+        persistence:
+          enabled: true
+          size: 20Gi
+        resources:
+          requests:
+            cpu: "500m"
+            memory: 4Gi
+          limits:
+            cpu: "2"
+            memory: 6Gi
+        probes:
+          startup:
+            enabled: true
+            path: /readyz
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 80
+          readiness:
+            enabled: true
+            path: /readyz
+            initialDelaySeconds: 20
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 30
+          liveness:
+            enabled: true
+            path: /livez
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            timeoutSeconds: 3
+            failureThreshold: 10
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: rag-api
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

@@ -58,6 +58,106 @@ The Hugging Face modules cache defaults to `.cache/hf_modules` (outside `data/`)
 uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
+## Containerization
+
+This repo includes a multi-stage Dockerfile that supports two production flows:
+
+1. Preloaded image: downloads Phi-3.5 and quantizes to GGUF during build.
+2. Kubernetes initContainer: downloads and quantizes before the app container starts.
+
+### Build preloaded runtime image (fastest startup)
+
+```bash
+docker build -t github-q-a:runtime .
+```
+
+The default final stage is `runtime-preloaded`, which bakes the GGUF into `/opt/models/phi3_quantized`.
+
+### Build initContainer image
+
+```bash
+docker build --target quantizer -t github-q-a:quantizer .
+```
+
+The `quantizer` target is meant for initContainer jobs and writes GGUF files to `/models/phi3_quantized`.
+
+### Run container locally
+
+```bash
+docker run --rm -p 8000:8000 \
+  -e REPO_URL=https://github.com/Kanha7jpg/BasicLearning \
+  github-q-a:runtime
+```
+
+### Kubernetes with initContainer
+
+Use `deploy/k8s/rag-api-initcontainer.yaml`.
+
+```bash
+kubectl apply -f deploy/k8s/rag-api-initcontainer.yaml
+```
+
+Update image names in the manifest to your registry tags before applying.
+
+### Kubernetes with Helm
+
+A chart is available at `deploy/helm/rag-api`.
+
+Install:
+
+```bash
+helm upgrade --install rag-api deploy/helm/rag-api \
+  --set image.repository=ghcr.io/kanha7jpg/github-q-a \
+  --set image.tag=runtime
+```
+
+Override key values:
+
+```bash
+helm upgrade --install rag-api deploy/helm/rag-api \
+  --set replicaCount=2 \
+  --set resources.requests.memory=4Gi \
+  --set resources.limits.memory=6Gi \
+  --set persistence.enabled=true \
+  --set persistence.size=20Gi
+```
+
+The chart includes:
+
+- `replicaCount`
+- `resources` with default request memory set to `4Gi`
+- `persistence` PVC for Chroma vector DB (`/app/data/chroma`)
+- `livenessProbe`, `readinessProbe`, and `startupProbe` tuned for long model-loading windows
+
+### CI/CD (GitOps)
+
+GitLab CI pipeline is defined in `.gitlab-ci.yml` and runs on every push:
+
+- Helm lint + render for `deploy/helm/rag-api`
+- Build and push runtime image to GitLab Registry:
+  - `$CI_REGISTRY_IMAGE/runtime:$CI_COMMIT_SHA`
+  - `$CI_REGISTRY_IMAGE/runtime:$CI_COMMIT_REF_SLUG-latest`
+- Build and push quantizer image to GitLab Registry:
+  - `$CI_REGISTRY_IMAGE/quantizer:$CI_COMMIT_SHA`
+  - `$CI_REGISTRY_IMAGE/quantizer:$CI_COMMIT_REF_SLUG-latest`
+
+ArgoCD manifests are in `deploy/argocd/`:
+
+- `install-minikube.md`: install ArgoCD in Minikube and access UI
+- `rag-api-application.yaml`: ArgoCD `Application` that syncs Helm chart from Git
+
+The Application manifest enables Auto-Sync with:
+
+- `prune: true`
+- `selfHeal: true`
+- `CreateNamespace=true`
+
+Before applying, update placeholders in `deploy/argocd/rag-api-application.yaml`:
+
+- `repoURL`
+- `image.repository`
+- `targetRevision` if needed
+
 On startup, the app will:
 
 1. Clone or update the target repository.

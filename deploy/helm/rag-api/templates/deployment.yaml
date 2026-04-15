@@ -1,0 +1,89 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "rag-api.fullname" . }}
+  labels:
+    {{- include "rag-api.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "rag-api.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "rag-api.selectorLabels" . | nindent 8 }}
+    spec:
+      containers:
+        - name: rag-api
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+          env:
+            - name: REPO_URL
+              value: {{ .Values.env.REPO_URL | quote }}
+            - name: CLONE_DIR
+              value: {{ .Values.env.CLONE_DIR | quote }}
+            - name: CHROMA_PATH
+              value: {{ .Values.env.CHROMA_PATH | quote }}
+            - name: COLLECTION_NAME
+              value: {{ .Values.env.COLLECTION_NAME | quote }}
+            - name: EMBEDDING_MODEL_NAME
+              value: {{ .Values.env.EMBEDDING_MODEL_NAME | quote }}
+            - name: SLM_MODEL_NAME
+              value: {{ .Values.env.SLM_MODEL_NAME | quote }}
+            - name: SLM_LOCAL_FILES_ONLY
+              value: {{ .Values.env.SLM_LOCAL_FILES_ONLY | quote }}
+            - name: SLM_BACKEND
+              value: {{ .Values.env.SLM_BACKEND | quote }}
+            - name: GGUF_MODEL_PATH
+              value: {{ .Values.env.GGUF_MODEL_PATH | quote }}
+            - name: LLAMA_N_CTX
+              value: {{ .Values.env.LLAMA_N_CTX | quote }}
+            - name: LLAMA_N_THREADS
+              value: {{ .Values.env.LLAMA_N_THREADS | quote }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          {{- if .Values.probes.liveness.enabled }}
+          livenessProbe:
+            httpGet:
+              path: {{ .Values.probes.liveness.path }}
+              port: http
+            initialDelaySeconds: {{ .Values.probes.liveness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.liveness.periodSeconds }}
+            timeoutSeconds: {{ .Values.probes.liveness.timeoutSeconds }}
+            failureThreshold: {{ .Values.probes.liveness.failureThreshold }}
+          {{- end }}
+          {{- if .Values.probes.readiness.enabled }}
+          readinessProbe:
+            httpGet:
+              path: {{ .Values.probes.readiness.path }}
+              port: http
+            initialDelaySeconds: {{ .Values.probes.readiness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.readiness.periodSeconds }}
+            timeoutSeconds: {{ .Values.probes.readiness.timeoutSeconds }}
+            failureThreshold: {{ .Values.probes.readiness.failureThreshold }}
+          {{- end }}
+          {{- if .Values.probes.startup.enabled }}
+          startupProbe:
+            httpGet:
+              path: {{ .Values.probes.startup.path }}
+              port: http
+            periodSeconds: {{ .Values.probes.startup.periodSeconds }}
+            timeoutSeconds: {{ .Values.probes.startup.timeoutSeconds }}
+            failureThreshold: {{ .Values.probes.startup.failureThreshold }}
+          {{- end }}
+          {{- if .Values.persistence.enabled }}
+          volumeMounts:
+            - name: chroma-data
+              mountPath: {{ .Values.persistence.mountPath }}
+          {{- end }}
+      {{- if .Values.persistence.enabled }}
+      volumes:
+        - name: chroma-data
+          persistentVolumeClaim:
+            claimName: {{ default (printf "%s-chroma" (include "rag-api.fullname" .)) .Values.persistence.existingClaim }}
+      {{- end }}

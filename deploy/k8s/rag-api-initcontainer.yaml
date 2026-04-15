@@ -1,0 +1,86 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: rag-models-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rag-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rag-api
+  template:
+    metadata:
+      labels:
+        app: rag-api
+    spec:
+      initContainers:
+        - name: prepare-quantized-model
+          image: ghcr.io/kanha7jpg/github-q-a:quantizer
+          imagePullPolicy: IfNotPresent
+          command: ["sh", "-lc"]
+          args:
+            - >
+              python -c "from huggingface_hub import snapshot_download; snapshot_download(repo_id='microsoft/Phi-3.5-mini-instruct')";
+              python quantize.py --output-dir /models/phi3_quantized --quantized-name phi-3.5-q4_k_m-local.gguf --full-name phi-3.5-f16-init.gguf --backend llama_cpp --skip-env-update
+          volumeMounts:
+            - name: models
+              mountPath: /models
+      containers:
+        - name: rag-api
+          image: ghcr.io/kanha7jpg/github-q-a:runtime
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+          env:
+            - name: REPO_URL
+              value: https://github.com/Kanha7jpg/BasicLearning
+            - name: CLONE_DIR
+              value: data/repository
+            - name: CHROMA_PATH
+              value: data/chroma
+            - name: COLLECTION_NAME
+              value: repo_chunks
+            - name: EMBEDDING_MODEL_NAME
+              value: sentence-transformers/all-MiniLM-L6-v2
+            - name: SLM_MODEL_NAME
+              value: microsoft/Phi-3.5-mini-instruct
+            - name: SLM_LOCAL_FILES_ONLY
+              value: "true"
+            - name: SLM_BACKEND
+              value: llama_cpp
+            - name: GGUF_MODEL_PATH
+              value: /models/phi3_quantized/phi-3.5-q4_k_m-local.gguf
+            - name: LLAMA_N_CTX
+              value: "2048"
+            - name: LLAMA_N_THREADS
+              value: "8"
+          volumeMounts:
+            - name: models
+              mountPath: /models
+      volumes:
+        - name: models
+          persistentVolumeClaim:
+            claimName: rag-models-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rag-api
+spec:
+  selector:
+    app: rag-api
+  ports:
+    - protocol: TCP
+      port: 8000
+      targetPort: 8000
+  type: ClusterIP

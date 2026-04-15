@@ -206,6 +206,22 @@ def health() -> HealthResponse:
     )
 
 
+@app.get("/livez")
+def livez() -> dict[str, str]:
+    return {"status": "ok"}
+
+
+@app.get("/readyz")
+def readyz() -> dict[str, str]:
+    if not state.ingestion_completed:
+        raise HTTPException(status_code=503, detail="ingestion not completed")
+
+    if settings.slm_backend == "llama_cpp" and not state.model_loaded:
+        raise HTTPException(status_code=503, detail="quantized model not loaded")
+
+    return {"status": "ready"}
+
+
 @app.get("/")
 def root() -> dict[str, str]:
     return {

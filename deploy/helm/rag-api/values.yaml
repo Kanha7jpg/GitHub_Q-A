@@ -1,0 +1,62 @@
+replicaCount: 1
+
+image:
+  repository: ghcr.io/kanha7jpg/github-q-a
+  tag: runtime
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 8000
+
+env:
+  REPO_URL: https://github.com/Kanha7jpg/BasicLearning
+  CLONE_DIR: data/repository
+  CHROMA_PATH: data/chroma
+  COLLECTION_NAME: repo_chunks
+  EMBEDDING_MODEL_NAME: sentence-transformers/all-MiniLM-L6-v2
+  SLM_MODEL_NAME: microsoft/Phi-3.5-mini-instruct
+  SLM_LOCAL_FILES_ONLY: "true"
+  SLM_BACKEND: llama_cpp
+  GGUF_MODEL_PATH: /opt/models/phi3_quantized/phi-3.5-q4_k_m-local.gguf
+  LLAMA_N_CTX: "2048"
+  LLAMA_N_THREADS: "8"
+
+resources:
+  requests:
+    cpu: "500m"
+    memory: 4Gi
+  limits:
+    cpu: "2"
+    memory: 6Gi
+
+persistence:
+  enabled: true
+  existingClaim: ""
+  storageClassName: ""
+  accessModes:
+    - ReadWriteOnce
+  size: 20Gi
+  mountPath: /app/data/chroma
+
+probes:
+  liveness:
+    enabled: true
+    path: /livez
+    initialDelaySeconds: 10
+    periodSeconds: 15
+    timeoutSeconds: 3
+    failureThreshold: 10
+  readiness:
+    enabled: true
+    path: /readyz
+    initialDelaySeconds: 20
+    periodSeconds: 20
+    timeoutSeconds: 5
+    failureThreshold: 30
+  startup:
+    enabled: true
+    path: /readyz
+    periodSeconds: 15
+    timeoutSeconds: 5
+    failureThreshold: 80
