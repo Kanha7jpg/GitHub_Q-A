@@ -9,3 +9,4 @@ outputs/
 .cache/
 tools/llama.cpp/
 .vscode/
+models/

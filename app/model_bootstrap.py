@@ -51,13 +51,33 @@ def ensure_quantized_model(settings: Settings, emit: callable) -> None:
         settings.slm_backend,
     ]
 
-    result = subprocess.run(cmd, cwd=project_root)
+    result = subprocess.run(
+        cmd,
+        cwd=project_root,
+        capture_output=True,
+        text=True,
+    )
     if result.returncode != 0:
-        raise RuntimeError(f"auto-quantization failed with exit code {result.returncode}")
+        stdout = (result.stdout or "").strip()
+        stderr = (result.stderr or "").strip()
+        if stdout:
+            emit(f"startup: auto-quantization stdout\n{stdout}")
+        if stderr:
+            emit(f"startup: auto-quantization stderr\n{stderr}")
+
+        message = f"auto-quantization failed with exit code {result.returncode}"
+        if settings.slm_backend == "llama_cpp":
+            raise RuntimeError(message)
+
+        emit(f"startup: {message}; continuing with non-GGUF fallback")
+        return
 
     if not gguf_path.exists() or not _is_valid_gguf(gguf_path):
-        raise RuntimeError(
-            f"auto-quantization finished but GGUF is missing/invalid at {gguf_path}"
-        )
+        message = f"auto-quantization finished but GGUF is missing/invalid at {gguf_path}"
+        if settings.slm_backend == "llama_cpp":
+            raise RuntimeError(message)
+
+        emit(f"startup: {message}; continuing with non-GGUF fallback")
+        return
 
     emit(f"startup: auto-quantization complete at {gguf_path}")

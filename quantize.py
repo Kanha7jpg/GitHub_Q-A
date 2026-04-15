@@ -44,10 +44,10 @@ LLAMA_CPP_DIR = PROJECT_ROOT / "tools" / "llama.cpp"
 
 def run(cmd: list[str], cwd: Path | None = None) -> None:
     """Run a subprocess command, streaming output live."""
-    print(f"\n▶ {' '.join(str(c) for c in cmd)}\n")
+    print(f"\n> {' '.join(str(c) for c in cmd)}\n")
     result = subprocess.run(cmd, cwd=cwd)
     if result.returncode != 0:
-        print(f"\n✗ Command failed with exit code {result.returncode}")
+        print(f"\nX Command failed with exit code {result.returncode}")
         sys.exit(result.returncode)
 
 
@@ -98,6 +98,21 @@ def is_valid_gguf(path: Path) -> bool:
         return magic == b"GGUF"
     except Exception:
         return False
+
+
+def ensure_free_space(target_dir: Path, required_bytes: int, label: str) -> None:
+    """Exit early when the target filesystem does not have enough free space."""
+    usage = shutil.disk_usage(target_dir)
+    if usage.free >= required_bytes:
+        return
+
+    required_gb = required_bytes / 1e9
+    free_gb = usage.free / 1e9
+    print(
+        f"\nX Not enough free disk space for {label}. "
+        f"Need about {required_gb:.1f} GB free, found {free_gb:.1f} GB."
+    )
+    sys.exit(1)
 
 
 def parse_env_file(path: Path) -> dict[str, str]:
@@ -214,25 +229,26 @@ def main() -> None:
     full_gguf_name = args.full_name
 
     print("=" * 60)
-    print("  Phi-3.5-mini-instruct  →  GGUF Q4_K_M quantizer")
+    print("  Phi-3.5-mini-instruct -> GGUF Q4_K_M quantizer")
     print("=" * 60)
 
     hf_snapshot = resolve_hf_snapshot()
 
     # ── Validate snapshot path ────────────────────────────────────────────────
     if hf_snapshot is None or not hf_snapshot.exists():
-        print("\n✗ Could not resolve a local Phi snapshot.")
+        print("\nX Could not resolve a local Phi snapshot.")
         print("  Set SLM_MODEL_PATH in .env to your local snapshot directory.")
         sys.exit(1)
 
     safetensors = list(hf_snapshot.glob("*.safetensors"))
     if not safetensors:
-        print(f"\n✗ No .safetensors files found in snapshot directory.")
+        print(f"\nX No .safetensors files found in snapshot directory.")
         sys.exit(1)
 
-    print(f"\n✓ Using HF snapshot:\n  {hf_snapshot}")
-    print(f"\n✓ Snapshot found  ({len(safetensors)} safetensors file(s))")
+    print(f"\nOK Using HF snapshot:\n  {hf_snapshot}")
+    print(f"\nOK Snapshot found  ({len(safetensors)} safetensors file(s))")
     output_dir.mkdir(parents=True, exist_ok=True)
+    ensure_free_space(output_dir, required_bytes=10 * 1024**3, label="F16 GGUF conversion")
 
     full_gguf_path = output_dir / full_gguf_name
     quantized_path = output_dir / quantized_name
@@ -240,7 +256,7 @@ def main() -> None:
     # ── Skip if already quantized ─────────────────────────────────────────────
     if quantized_path.exists() and is_valid_gguf(quantized_path):
         size_gb = quantized_path.stat().st_size / 1e9
-        print(f"\n✓ Quantized model already exists ({size_gb:.1f} GB):")
+        print(f"\nOK Quantized model already exists ({size_gb:.1f} GB):")
         print(f"  {quantized_path.resolve()}")
         if not args.skip_env_update:
             upsert_env_value(ENV_PATH, "GGUF_MODEL_PATH", str(quantized_path.resolve()))
@@ -252,7 +268,7 @@ def main() -> None:
         return
 
     # ── Step 1: Clone llama.cpp ───────────────────────────────────────────────
-    print("\n── Step 1 of 4: Setting up llama.cpp ──")
+    print("\n-- Step 1 of 4: Setting up llama.cpp --")
     LLAMA_CPP_DIR.parent.mkdir(parents=True, exist_ok=True)
 
     if not LLAMA_CPP_DIR.exists():
@@ -265,7 +281,7 @@ def main() -> None:
         print(f"  llama.cpp already cloned at {LLAMA_CPP_DIR}")
 
     # ── Step 2: Install Python deps ───────────────────────────────────────────
-    print("\n── Step 2 of 4: Installing llama.cpp Python requirements ──")
+    print("\n-- Step 2 of 4: Installing llama.cpp Python requirements --")
     requirements_file = LLAMA_CPP_DIR / "requirements.txt"
     if requirements_file.exists():
         run([sys.executable, "-m", "pip", "install", "-r", str(requirements_file), "-q"])
@@ -274,8 +290,8 @@ def main() -> None:
         run([sys.executable, "-m", "pip", "install", "gguf", "numpy", "-q"])
 
     # ── Step 3: Convert HF → full-precision GGUF ─────────────────────────────
-    print("\n── Step 3 of 4: Converting HF model to GGUF (F16) ──")
-    print("  This reads ~7 GB from disk — expect 5–15 minutes...\n")
+    print("\n-- Step 3 of 4: Converting HF model to GGUF (F16) --")
+    print("  This reads ~7 GB from disk - expect 5-15 minutes...\n")
 
     convert_script = LLAMA_CPP_DIR / "convert_hf_to_gguf.py"
     if not convert_script.exists():
@@ -283,7 +299,7 @@ def main() -> None:
         convert_script = LLAMA_CPP_DIR / "convert.py"
 
     if not convert_script.exists():
-        print("✗ Could not find convert_hf_to_gguf.py or convert.py in llama.cpp")
+        print("X Could not find convert_hf_to_gguf.py or convert.py in llama.cpp")
         sys.exit(1)
 
     run([
@@ -294,27 +310,27 @@ def main() -> None:
     ])
 
     if not full_gguf_path.exists() or not is_valid_gguf(full_gguf_path):
-        print("\n✗ Conversion produced no valid GGUF file.")
+        print("\nX Conversion produced no valid GGUF file.")
         sys.exit(1)
 
     size_gb = full_gguf_path.stat().st_size / 1e9
-    print(f"\n✓ Full-precision GGUF written ({size_gb:.1f} GB)")
+    print(f"\nOK Full-precision GGUF written ({size_gb:.1f} GB)")
 
     # ── Step 4: Build llama-quantize and quantize ─────────────────────────────
-    print("\n── Step 4 of 4: Quantizing to Q4_K_M ──")
+    print("\n-- Step 4 of 4: Quantizing to Q4_K_M --")
 
     quantize_bin = find_quantize_binary(LLAMA_CPP_DIR)
 
     if quantize_bin is None:
         if not check_cmake():
-            print("\n✗ cmake not found. Cannot build llama-quantize.")
+            print("\nX cmake not found. Cannot build llama-quantize.")
             print("  Install CMake from https://cmake.org/download/")
             print("  or via:  winget install Kitware.CMake")
             sys.exit(1)
 
         generator, reason = get_build_toolchain()
         if reason is not None:
-            print(f"\n✗ {reason}")
+            print(f"\nX {reason}")
             if os.name == "nt":
                 print(
                     "  Recommended install command:\n"
@@ -338,11 +354,12 @@ def main() -> None:
         quantize_bin = find_quantize_binary(LLAMA_CPP_DIR)
 
     if quantize_bin is None:
-        print("\n✗ Could not locate llama-quantize binary after build.")
+        print("\nX Could not locate llama-quantize binary after build.")
         sys.exit(1)
 
     print(f"  Using quantizer: {quantize_bin}")
-    print("  Quantizing to Q4_K_M — expect 5–10 minutes...\n")
+    print("  Quantizing to Q4_K_M - expect 5-10 minutes...\n")
+    ensure_free_space(output_dir, required_bytes=4 * 1024**3, label="Q4_K_M quantization")
 
     run([
         str(quantize_bin),
@@ -355,7 +372,7 @@ def main() -> None:
     if full_gguf_path.exists():
         print(f"\n  Deleting intermediate F16 GGUF ({size_gb:.1f} GB)...")
         full_gguf_path.unlink()
-        print("  ✓ Deleted")
+        print("  OK Deleted")
 
     # ── Done ──────────────────────────────────────────────────────────────────
     if quantized_path.exists() and is_valid_gguf(quantized_path):
@@ -364,7 +381,7 @@ def main() -> None:
             upsert_env_value(ENV_PATH, "GGUF_MODEL_PATH", str(quantized_path.resolve()))
             upsert_env_value(ENV_PATH, "SLM_BACKEND", args.backend)
         print(f"\n{'=' * 60}")
-        print(f"  ✓ Quantization complete!  ({final_size:.1f} GB)")
+        print(f"  OK Quantization complete!  ({final_size:.1f} GB)")
         print(f"{'=' * 60}")
         if not args.skip_env_update:
             print(f"  Updated .env: GGUF_MODEL_PATH={quantized_path.resolve()}")
@@ -373,7 +390,7 @@ def main() -> None:
             print("  Skipped .env update (--skip-env-update)")
         print_next_steps(quantized_path)
     else:
-        print("\n✗ Quantized file not found or invalid.")
+        print("\nX Quantized file not found or invalid.")
         sys.exit(1)
 
 
@@ -381,7 +398,7 @@ def print_next_steps(quantized_path: Path) -> None:
     abs_path = quantized_path.resolve()
     print(f"""
 Next steps
-──────────
+----------
 1. Install llama-cpp-python (CPU build):
 
      pip install llama-cpp-python
@@ -394,7 +411,7 @@ Next steps
      the app will use GGUF_MODEL_PATH automatically when present.
 
 4. Load time should drop significantly,
-   and each /ask query should respond in 2–5 minutes on CPU.
+   and each /ask query should respond in 2-5 minutes on CPU.
 """)
 
 
