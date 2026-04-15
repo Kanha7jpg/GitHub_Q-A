@@ -6,23 +6,23 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://gitlab.com/<group>/<project>.git
+    repoURL: https://github.com/Kanha7jpg/GitHub_Q-A
     targetRevision: main
     path: deploy/helm/rag-api
     helm:
       values: |
         image:
-          repository: registry.gitlab.com/<group>/<project>/runtime
+          repository: registry.gitlab.com/Kanha7jpg/GitHub_Q-A
           tag: main-latest
         persistence:
           enabled: true
           size: 20Gi
         resources:
           requests:
-            cpu: "500m"
+            cpu: 500m
             memory: 4Gi
           limits:
-            cpu: "2"
+            cpu: 2000m
             memory: 6Gi
         probes:
           startup:
