@@ -1,6 +1,6 @@
 # GitHub Q&A - Local Repository RAG API
 
-A production-grade Retrieval Augmented Generation (RAG) system that ingests GitHub repositories and provides intelligent question-answering capabilities using locally-quantized language models. Built with FastAPI, LangChain, ChromaDB, and Phi-3.5 Mini.
+A Retrieval Augmented Generation (RAG) system that ingests GitHub repositories and provides intelligent question-answering capabilities using locally-quantized language models. Built with FastAPI, LangChain, ChromaDB, and Phi-3.5 Mini.
 
 ## 🌟 Features
 
