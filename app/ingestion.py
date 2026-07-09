@@ -79,7 +79,7 @@ class RepositoryIngestor:
 
             for filename in filenames:
                 file_path = Path(root) / filename
-                if file_path.suffix.lower() in {".py", ".md"}:
+                if file_path.suffix.lower() in {".py", ".md", ".js", ".jsx", ".ts", ".tsx"}:
                     files.append(file_path)
 
         return files
@@ -89,7 +89,8 @@ class RepositoryIngestor:
         return file_path.read_text(encoding="utf-8", errors="ignore")
 
     def _split_file(self, file_path: Path, text: str) -> list[str]:
-        splitter = self.code_splitter if file_path.suffix.lower() == ".py" else self.markdown_splitter
+        suffix = file_path.suffix.lower()
+        splitter = self.code_splitter if suffix in {".py", ".js", ".jsx", ".ts", ".tsx"} else self.markdown_splitter
         chunks = splitter.split_text(text)
         return [chunk.strip() for chunk in chunks if chunk.strip()]
 
